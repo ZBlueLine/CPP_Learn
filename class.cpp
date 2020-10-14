@@ -274,13 +274,14 @@ public:
     Tuple(){}
     Tuple(T hd, Types... args)
     :Head(hd), Tuple<Types...>(args...){}
+    auto head()->decltype(Head) {return Head;}
     Tuple<Types...> tail(){return *this;}
-};
+}; 
 
 void test()
 {
     Tuple<int, double, double> myt(99, 0.3, 8.3242);
-    cout<<myt.tail().Head;  //0.3
+    cout<<myt.tail().head();  //0.3
 }
 
 }
@@ -349,17 +350,194 @@ void tese()
 
 }
 
+//内存管理部分测试
+
+
+
+#include <windows.h>
+
+namespace jjnd
+{
+
+class Allocator
+{
+private:
+    struct obj{
+        struct obj* next;
+    };
+public:
+    void* allocate(size_t);
+    void  deallocate(void*, size_t);
+private:
+    obj* freeStore = nullptr;
+    const int CHUNK = 5;
+};
+
+void* Allocator::allocate(size_t size)
+{
+    obj* p;
+    if(!freeStore)
+    {
+        size_t chunk = CHUNK * size;
+        freeStore = p = reinterpret_cast<obj*>(new char[chunk]);
+        for(int i = 0; i < (CHUNK-1); ++i)
+        {   
+            // cout<<"freeStore: "<<&freeStore->next<<endl;
+            cout<<"freeStore->next: "<<freeStore->next<<endl;
+            p->next = (obj*)((char*)p+size);
+            // cout<<"freeStore: "<<&freeStore->next<<endl;
+            cout<<"freeStore->next: "<<freeStore->next<<endl;
+            // cout<<"pnext: "<<p->next<<endl;
+            p = p->next;
+            cout<<"p->next"<<p<<endl;
+            //freeStore = freeStore->next;
+            // cout<<"p: "<<p<<endl;
+            cout<<"freeStore: "<<freeStore->next<<endl;
+        }
+        p->next = nullptr;
+    }
+    p = freeStore;
+    freeStore = freeStore->next;
+    return p;
+}
+
+class Foo{
+public:
+    int a;
+    static Allocator myalloc;
+    Foo(const int& i)
+    : a(i){}
+    void* operator new(size_t size)
+    {return myalloc.allocate(size);}
+    void operator delete(void *p, size_t size)
+    {return myalloc.deallocate(p, size);}
+};
+Allocator Foo::myalloc;
+
+void Allocator::deallocate(void* p, size_t size)
+{
+    ((obj*)p)->next = freeStore;
+    freeStore = (obj*)p;
+}
+
+class A
+{
+public:
+    int id;
+    A():id(0){cout<<"default ctor.this="<<this<<" id="<<id<<endl;}
+    A(const int& i) : id(i){cout<<"ctor.this="<<this<<" id="<<id<<endl;}
+    ~A(){cout<<"dtor.this="<<this<<" id="<<id<<endl;}
+
+};
+
+class Screen{
+public:
+    struct Screendata{
+        int i;
+    };
+    union{
+        Screendata data;
+        Screen *next;
+    };
+    Screen(int x){data.i = x;};
+    int get(){return data.i;}
+    void* operator new(size_t);
+    void operator delete(void*, size_t);
+private:
+    static Screen *freeStore;
+    static const int screenChunk;
+};
+Screen* Screen::freeStore;
+const int Screen::screenChunk = 24;
+
+void* Screen::operator new(size_t size)
+{
+    Screen *p;
+    if(!freeStore)
+    {
+        size_t chunk = screenChunk * size;
+        freeStore = p = reinterpret_cast<Screen*>(new char[chunk]);
+        for(int i = 0; p != &freeStore[screenChunk-1]; ++p, ++i)
+        {
+            p->next = p + 1;
+        }
+        cout<<endl;
+        p->next = nullptr;
+    }
+    p = freeStore;
+    freeStore = freeStore->next;
+    return p;
+}
+
+void Screen::operator delete(void *p, size_t)
+{
+    (static_cast<Screen*>(p))->next = freeStore;
+    freeStore = static_cast<Screen*>(p);
+}
+
+void test()
+{
+    // const int n = 3;
+    // Screen *p[n];
+    // for(int i = 0; i < n; ++i)
+    //     p[i] = new Screen(i);
+    // for(int i = 0; i < n; ++i)
+    //     cout<<p[i]<<endl;
+    Foo *a[10];
+    
+    //cout<<a[0]->a<<endl;
+    for(int i = 0; i < 10; ++i)
+        a[i] = new Foo(i);
+    for(int i = 0; i < 10; ++i)
+        cout<<a[i]<<endl;
+}
+
+}
+
+
+//#include<ext/pool_allocator.h>
+
+namespace jjhand
+{
+
+typedef void(*fun)();
+
+void NoMoreMemory()
+{
+    cerr<<"out of memory";
+    abort();
+}
+void NoMoreMemory2()
+{
+    cerr<<"out of memory222";
+    abort();
+}
+
+void test()
+{
+    fun myfun;
+    set_new_handler(NoMoreMemory);
+    myfun = set_new_handler(NoMoreMemory2);
+    set_new_handler(myfun);
+    int *p = new int[10000000000000000000000];
+    cout<<"??"<<endl;
+    return;
+}
+
+}
+
 int main()
 {
     //jj01::test01();
-    //jj02::test02();
+    jj02::test02();
     //jjinsert::testtinsert();
     //jjstradapt::teststream();
     //jjinadapt::testin();
-    jjhash::test();
+    //jjhash::test();
     //jjtuple::test();
     //jjtraits::test();
     //jjconst::tese();
-    
+    //jjnd::test();
+    //jjhand::test();
     return 0;
 }
